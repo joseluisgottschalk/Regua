@@ -62,7 +62,11 @@ tr.rep:hover td{background:var(--accent-soft)}
   <label>Representante<input id="fBusca" placeholder="nome ou código" size="18"></label>
   <label>&nbsp;<button id="btnExp">Expandir tudo</button></label>
   <label>&nbsp;<button id="btnCsv">Exportar CSV</button></label>
-  <label>&nbsp;<button id="btnReload" class="primary">Recarregar</button></label>
+  <label>&nbsp;<button id="btnApi">Conexão</button></label>
+  <label>&nbsp;<button id="btnReload" class="primary">Atualizar dados</button></label>
+</div>
+<div class="status" id="apiBox" hidden>
+  Endereço do webhook n8n: <input id="apiUrl" size="60"> <button id="apiSave" class="primary">Salvar e atualizar</button> <button id="apiReset">Padrão</button>
 </div>
 <div class="status" id="status"></div>
 
@@ -84,7 +88,12 @@ tr.rep:hover td{background:var(--accent-soft)}
 </div>
 
 <script>
-const DADOS = "dados.json";
+const DADOS = "dados.json";                                   // cópia de segurança, usada se o n8n não responder
+const API_PADRAO = "http://localhost:5678/webhook/avaliacao-dados"; // fluxo "API - Dados Avaliação de Representantes"
+function getApi(){
+  const q=new URLSearchParams(location.search).get("api"); if(q) return q;
+  try{ return localStorage.getItem("apiAvaliacao") || API_PADRAO }catch(e){ return API_PADRAO }
+}
 /* formato do dados.json:
    linhas:   ["01","02",...]
    repres:   [[regional, cod_repres, nome], ...]
@@ -109,21 +118,36 @@ let state = {sortKey:"vendaAcum", sortDir:-1, open:new Set(), allOpen:false};
 
 /* ---------- carga ---------- */
 async function load(){
-  setStatus("Carregando dados…");
+  const api = getApi();
+  let j=null, origem="", falhaApi="";
+  setStatus("Buscando dados no n8n…");
   try{
-    const r = await fetch(DADOS+"?t="+Date.now(), {cache:"no-store"});
-    if(!r.ok) throw new Error("HTTP "+r.status+" ao abrir "+DADOS);
-    const j = await r.json();
-    if(!j || !Array.isArray(j.notas)) throw new Error("arquivo "+DADOS+" em formato inesperado");
-    unpack(j);
-    setStatus("");
-    document.getElementById("meta").textContent =
-      `${NF.length.toLocaleString("pt-BR")} notas · dados gerados em ${new Date(j.gerado).toLocaleString("pt-BR")}`;
-    fillFilters();
-    render();
+    const r = await fetch(api, {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    j = await r.json();
+    if(Array.isArray(j)) j=j[0];
+    if(!j || !Array.isArray(j.notas)) throw new Error("resposta em formato inesperado");
+    origem="n8n (ao vivo)";
   }catch(e){
-    setStatus(`<span class="err">Não foi possível carregar os dados: ${e.message}.</span>`);
+    falhaApi=e.message; j=null;
+    try{
+      const r = await fetch(DADOS+"?t="+Date.now(), {cache:"no-store"});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      j = await r.json();
+      if(!j || !Array.isArray(j.notas)) throw new Error("formato inesperado");
+      origem="arquivo dados.json";
+    }catch(e2){
+      setStatus(`<span class="err">Não foi possível carregar os dados.</span> n8n: ${falhaApi}. dados.json: ${e2.message}.`);
+      return;
+    }
   }
+  unpack(j);
+  setStatus(origem.startsWith("n8n") ? "" :
+    `<span class="err">n8n indisponível (${falhaApi}).</span> Mostrando a cópia salva em dados.json. Confira se o n8n está rodando e o endereço em <b>Conexão</b>.`);
+  document.getElementById("meta").textContent =
+    `${NF.length.toLocaleString("pt-BR")} notas · fonte: ${origem} · dados de ${new Date(j.gerado).toLocaleString("pt-BR")}`;
+  fillFilters();
+  render();
 }
 function setStatus(h){document.getElementById("status").innerHTML=h}
 
@@ -278,6 +302,9 @@ document.getElementById("fMes").onchange=render;
 document.getElementById("fReg").onchange=render;
 document.getElementById("fBusca").oninput=render;
 document.getElementById("btnReload").onclick=load;
+document.getElementById("btnApi").onclick=()=>{const b=document.getElementById("apiBox"); b.hidden=!b.hidden; document.getElementById("apiUrl").value=getApi()};
+document.getElementById("apiSave").onclick=()=>{try{localStorage.setItem("apiAvaliacao",T(document.getElementById("apiUrl").value))}catch(e){} document.getElementById("apiBox").hidden=true; load()};
+document.getElementById("apiReset").onclick=()=>{try{localStorage.removeItem("apiAvaliacao")}catch(e){} document.getElementById("apiUrl").value=API_PADRAO};
 document.getElementById("btnExp").onclick=e=>{state.allOpen=!state.allOpen;state.open.clear();e.target.textContent=state.allOpen?"Recolher tudo":"Expandir tudo";render()};
 document.getElementById("tbody").onclick=e=>{
   const tr=e.target.closest("tr.reg"); if(!tr)return;
