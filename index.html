@@ -85,6 +85,7 @@ tr.rep:hover td{background:var(--accent-soft)}
   Último pedido = NF mais recente do representante até o mês de referência.
   Média linhas/mês = soma das linhas distintas vendidas em cada mês fechado ÷ nº de meses fechados.
   Nas linhas de regional e no total, clientes e linhas são contados sem repetição.
+  Só aparecem os representantes com venda no período acumulado do mês de referência.
 </div>
 
 <script>
@@ -254,9 +255,9 @@ function render(){
   const cmp=(a,b)=>{if(sk==="_nome")return a.nome.localeCompare(b.nome,"pt-BR")*sd; const x=a.m[sk],y=b.m[sk]; if(x==null&&y==null)return 0; if(x==null)return 1; if(y==null)return -1; return (x>y?1:x<y?-1:0)*sd};
   const regArr=[...regs.values()].map(r=>{
     r.m=metrics(r.list,ref);
-    r.repArr=[...r.reps.values()].map(p=>{p.m=metrics(p.list,ref);return p}).filter(p=>p.m.vendaAcum>0||p.m.ultData).sort(cmp);
+    r.repArr=[...r.reps.values()].map(p=>{p.m=metrics(p.list,ref);return p}).filter(p=>p.m.vendaAcum>0).sort(cmp);  // só quem vendeu no período
     return r;
-  }).sort(cmp);
+  }).filter(r=>r.repArr.length>0).sort(cmp);
   const tot=metrics(base,ref);
 
   drawTiles(tot, ref, fReg, base);
